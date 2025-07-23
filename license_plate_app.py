@@ -23,6 +23,11 @@ except ImportError:
 
 import cv2
 import pyautogui
+# Import state filter
+from state_filters import is_state_name_or_abbreviation
+from easyocr_engine import easyocr_ocr, OCRResult
+from paddleocr_engine import paddleocr_ocr
+from tesseract_engine import tesseract_ocr
 
 # Configuration
 CONFIGURATION = {
@@ -48,13 +53,17 @@ class LicensePlateRecognizer:
         self.confidence_threshold = config['confidence_threshold']
         self.agreement_threshold = config['agreement_threshold']
         if pytesseract:
-            self.ocr_engines['tesseract'] = self.tesseract_ocr
+            self.ocr_engines['tesseract'] = lambda img: tesseract_ocr(img, pytesseract, self.clean_license_plate, getattr(self, 'log_result', None))
         if easyocr:
-            self.ocr_engines['easyocr'] = self.easyocr_ocr
+            self.easyocr_reader = easyocr.Reader(['en'])
+            self.ocr_engines['easyocr'] = lambda img: easyocr_ocr(img, self.easyocr_reader, self.clean_license_plate, getattr(self, 'log_result', None))
+        else:
+            self.easyocr_reader = None
         if PaddleOCR:
-            self.ocr_engines['paddleocr'] = self.paddleocr_ocr
-        self.easyocr_reader = easyocr.Reader(['en']) if easyocr else None
-        self.paddleocr_reader = PaddleOCR(use_angle_cls=True, lang='en') if PaddleOCR else None
+            self.paddleocr_reader = PaddleOCR(use_textline_orientation=True, lang='en')
+            self.ocr_engines['paddleocr'] = lambda img: paddleocr_ocr(img, self.paddleocr_reader, self.clean_license_plate, getattr(self, 'log_result', None))
+        else:
+            self.paddleocr_reader = None
 
     def preprocess_image(self, image):
         # Convert to grayscale
@@ -75,44 +84,12 @@ class LicensePlateRecognizer:
             img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
         return Image.fromarray(img)
 
-    def tesseract_ocr(self, image) -> OCRResult:
-        if not pytesseract:
-            return OCRResult('', 0.0, 'tesseract')
-        try:
-            text = pytesseract.image_to_string(image, config='--psm 7')
-            conf = 0.8  # Tesseract does not always provide confidence
-            return OCRResult(text, conf, 'tesseract')
-        except Exception:
-            return OCRResult('', 0.0, 'tesseract')
-
-    def easyocr_ocr(self, image) -> OCRResult:
-        if not self.easyocr_reader:
-            return OCRResult('', 0.0, 'easyocr')
-        try:
-            result = self.easyocr_reader.readtext(np.array(image))
-            if result:
-                text, conf = result[0][1], float(result[0][2])
-                return OCRResult(text, conf, 'easyocr')
-            else:
-                return OCRResult('', 0.0, 'easyocr')
-        except Exception:
-            return OCRResult('', 0.0, 'easyocr')
-
-    def paddleocr_ocr(self, image) -> OCRResult:
-        if not self.paddleocr_reader:
-            return OCRResult('', 0.0, 'paddleocr')
-        try:
-            result = self.paddleocr_reader.ocr(np.array(image))
-            if result and result[0]:
-                text, conf = result[0][0][1][0], float(result[0][0][1][1])
-                return OCRResult(text, conf, 'paddleocr')
-            else:
-                return OCRResult('', 0.0, 'paddleocr')
-        except Exception:
-            return OCRResult('', 0.0, 'paddleocr')
-
     def clean_license_plate(self, text) -> str:
         text = ''.join(filter(str.isalnum, text.upper()))
+        # Filter out state names/abbreviations
+        if is_state_name_or_abbreviation(text):
+            return ''
+        # Only accept likely license plate numbers (alphanumeric, length 3-10)
         if CONFIGURATION['min_plate_length'] <= len(text) <= CONFIGURATION['max_plate_length']:
             return text
         return ''
@@ -144,8 +121,23 @@ class LicensePlateRecognizer:
         for name, engine in self.ocr_engines.items():
             try:
                 result = engine(processed)
+                # Debug: log raw OCR result
+                debug_raw = f"OCR ({name}): '{result.text}' (conf: {result.confidence})"
+                print(debug_raw)
+                if hasattr(self, 'log_result'):
+                    self.log_result(debug_raw)
+                # Debug: log cleaned text
+                cleaned = self.clean_license_plate(result.text)
+                debug_cleaned = f"Cleaned ({name}): '{cleaned}'"
+                print(debug_cleaned)
+                if hasattr(self, 'log_result'):
+                    self.log_result(debug_cleaned)
                 results.append(result)
-            except Exception:
+            except Exception as e:
+                error_msg = f"OCR ({name}) error: {e}"
+                print(error_msg)
+                if hasattr(self, 'log_result'):
+                    self.log_result(error_msg)
                 results.append(OCRResult('', 0.0, name))
         return self.get_consensus_result(results)
 
@@ -187,10 +179,12 @@ class LicensePlateApp:
         self.gui_components['stop_btn'].grid(row=0, column=1)
         self.gui_components['set_field_btn'] = tk.Button(frame, text='Set Target Field', command=self.set_target_field)
         self.gui_components['set_field_btn'].grid(row=0, column=2)
+        self.gui_components['set_region_btn'] = tk.Button(frame, text='Set Scan Region', command=self.set_scan_region)
+        self.gui_components['set_region_btn'].grid(row=0, column=3)
         self.gui_components['status'] = tk.Label(frame, text='Status: Ready')
-        self.gui_components['status'].grid(row=1, column=0, columnspan=3)
+        self.gui_components['status'].grid(row=1, column=0, columnspan=4)
         self.gui_components['results'] = tk.Text(frame, height=10, width=50)
-        self.gui_components['results'].grid(row=2, column=0, columnspan=3)
+        self.gui_components['results'].grid(row=2, column=0, columnspan=4)
         self.gui_components['interval_label'] = tk.Label(frame, text='Scan Interval:')
         self.gui_components['interval_label'].grid(row=3, column=0)
         self.gui_components['interval_entry'] = tk.Entry(frame, width=5)
@@ -200,9 +194,66 @@ class LicensePlateApp:
         self.gui_components['interval_unit'].grid(row=3, column=2)
 
     def set_target_field(self):
-        # Dummy: set to fixed position
-        self.target_field = (450, 300)
-        self.log_result(f"Target field set at {self.target_field}")
+        def capture_click():
+            try:
+                # Minimize the window
+                self.gui_components['start_btn'].master.master.iconify()
+                messagebox.showinfo('Set Target Field', 'Move your mouse to the target field and left-click to set its position.')
+                # Wait for mouse click
+                import pyautogui
+                pos = None
+                while pos is None:
+                    if pyautogui.mouseDown(button='left'):
+                        pos = pyautogui.position()
+                        break
+                # Restore the window
+                self.gui_components['start_btn'].master.master.deiconify()
+                self.target_field = (pos.x, pos.y)
+                self.log_result(f"Target field set at {self.target_field}")
+            except pyautogui.FailSafeException:
+                self.gui_components['start_btn'].master.master.deiconify()
+                messagebox.showwarning('Operation Cancelled', 'Mouse moved to a screen corner. Target field selection cancelled for your safety.')
+                self.log_result('Target field selection cancelled due to PyAutoGUI fail-safe.')
+        threading.Thread(target=capture_click, daemon=True).start()
+
+    def set_scan_region(self):
+        def region_selector():
+            import tkinter as tk
+            import threading
+            # Minimize main window
+            self.gui_components['start_btn'].master.master.iconify()
+            # Create transparent overlay
+            overlay = tk.Tk()
+            overlay.attributes('-fullscreen', True)
+            overlay.attributes('-alpha', 0.3)
+            overlay.attributes('-topmost', True)
+            overlay.config(cursor="crosshair")
+            canvas = tk.Canvas(overlay, bg='black')
+            canvas.pack(fill=tk.BOTH, expand=True)
+            start = [0, 0]
+            rect = [None]
+            region = [None]
+            def on_mouse_down(event):
+                start[0], start[1] = event.x, event.y
+                rect[0] = canvas.create_rectangle(event.x, event.y, event.x, event.y, outline='red', width=2)
+            def on_mouse_move(event):
+                if rect[0] is not None:
+                    canvas.coords(rect[0], start[0], start[1], event.x, event.y)
+            def on_mouse_up(event):
+                x0, y0 = start[0], start[1]
+                x1, y1 = event.x, event.y
+                left, top = min(x0, x1), min(y0, y1)
+                width, height = abs(x1 - x0), abs(y1 - y0)
+                region[0] = (left, top, width, height)
+                overlay.destroy()
+                self.gui_components['start_btn'].master.master.deiconify()
+                self.scan_region = region[0]
+                self.log_result(f"Scan region set to: {self.scan_region}")
+            canvas.bind('<ButtonPress-1>', on_mouse_down)
+            canvas.bind('<B1-Motion>', on_mouse_move)
+            canvas.bind('<ButtonRelease-1>', on_mouse_up)
+            overlay.mainloop()
+        threading.Thread(target=region_selector, daemon=True).start()
 
     def start_recognition(self):
         if not self.running:
@@ -217,8 +268,8 @@ class LicensePlateApp:
 
     def recognition_loop(self):
         while self.running:
-            # Dummy region for screen capture
-            region = (100, 100, 200, 60)
+            # Use user-selected region if available, else default
+            region = getattr(self, 'scan_region', (100, 100, 200, 60))
             img = self.screen_automation.capture_screen_region(region)
             text, conf, alert = self.recognizer.recognize_license_plate(img)
             now = time.strftime('%H:%M:%S')

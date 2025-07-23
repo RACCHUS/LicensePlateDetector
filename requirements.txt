@@ -1,3 +1,9 @@
+# For Windows users:
+# - If you have an NVIDIA GPU and want GPU acceleration, install paddlepaddle-gpu as per https://www.paddlepaddle.org.cn/install/quick
+# - Otherwise, install paddlepaddle (CPU version)
+# Do NOT install both paddlepaddle and paddlepaddle-gpu at the same time.
+# Example (CPU): pip install paddlepaddle
+# Example (GPU): pip install paddlepaddle-gpu==2.5.2.post118 -f https://www.paddlepaddle.org.cn/whl/windows/mkl/avx/stable.html
 opencv-python
 pytesseract
 easyocr
