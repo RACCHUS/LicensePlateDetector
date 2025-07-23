@@ -129,17 +129,31 @@ class LicensePlateRecognizer:
         return '', 0.0, True
 
     def recognize_license_plate(self, image):
+        # Prepare different image formats for each engine
         processed = self.preprocess_image(image)
+        np_image = np.array(image)
         results = []
         for name, engine in self.ocr_engines.items():
             try:
-                result = engine(processed)
-                # Debug: log raw OCR result
+                if name == 'keras_ocr':
+                    # keras-ocr expects a color image (numpy array, RGB)
+                    result = engine(image)
+                elif name == 'paddleocr':
+                    # paddleocr expects a numpy array (BGR)
+                    bgr_img = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR) if len(np_image.shape) == 3 else np_image
+                    result = engine(bgr_img)
+                elif name == 'doctr':
+                    # doctr expects a numpy array (RGB)
+                    result = engine(np_image)
+                elif name == 'easyocr':
+                    # easyocr works well with preprocessed PIL image
+                    result = engine(processed)
+                else:
+                    result = engine(processed)
                 debug_raw = f"OCR ({name}): '{result.text}' (conf: {result.confidence})"
                 print(debug_raw)
                 if hasattr(self, 'log_result'):
                     self.log_result(debug_raw)
-                # Debug: log cleaned text
                 cleaned = self.clean_license_plate(result.text)
                 debug_cleaned = f"Cleaned ({name}): '{cleaned}'"
                 print(debug_cleaned)

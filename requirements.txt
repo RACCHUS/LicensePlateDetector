@@ -10,11 +10,15 @@
 # https://pytorch.org/get-started/locally/
 opencv-python
 easyocr
-paddleocr
+paddeocr
+paddlepaddle
 Pillow
 tk
 pyautogui
-numpy
+numpy<2.0
 keras-ocr
 python-doctr
-tensorflow-cpu
+keras<3.0
+tensorflow-cpu<2.13
+torch
+typing-extensions>=4.12.2
