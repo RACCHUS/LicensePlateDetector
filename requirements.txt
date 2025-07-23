@@ -4,11 +4,17 @@
 # Do NOT install both paddlepaddle and paddlepaddle-gpu at the same time.
 # Example (CPU): pip install paddlepaddle
 # Example (GPU): pip install paddlepaddle-gpu==2.5.2.post118 -f https://www.paddlepaddle.org.cn/whl/windows/mkl/avx/stable.html
+#
+# python-doctr requires torch, which is not listed here.
+# Please install torch separately, following the instructions on the PyTorch website:
+# https://pytorch.org/get-started/locally/
 opencv-python
-pytesseract
 easyocr
 paddleocr
 Pillow
 tk
 pyautogui
 numpy
+keras-ocr
+python-doctr
+tensorflow-cpu

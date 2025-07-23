@@ -9,9 +9,13 @@ from PIL import Image, ImageTk
 
 # OCR imports (to be handled with error catching)
 try:
-    import pytesseract
+    import keras_ocr
 except ImportError:
-    pytesseract = None
+    keras_ocr = None
+try:
+    from doctr.models import ocr_predictor
+except ImportError:
+    ocr_predictor = None
 try:
     import easyocr
 except ImportError:
@@ -27,7 +31,8 @@ import pyautogui
 from state_filters import is_state_name_or_abbreviation
 from easyocr_engine import easyocr_ocr, OCRResult
 from paddleocr_engine import paddleocr_ocr
-from tesseract_engine import tesseract_ocr
+from doctr_engine import doctr_ocr
+from kerasocr_engine import kerasocr_ocr
 
 # Configuration
 CONFIGURATION = {
@@ -52,8 +57,16 @@ class LicensePlateRecognizer:
         self.ocr_engines = {}
         self.confidence_threshold = config['confidence_threshold']
         self.agreement_threshold = config['agreement_threshold']
-        if pytesseract:
-            self.ocr_engines['tesseract'] = lambda img: tesseract_ocr(img, pytesseract, self.clean_license_plate, getattr(self, 'log_result', None))
+        if keras_ocr:
+            self.kerasocr_pipeline = keras_ocr.pipeline.Pipeline()
+            self.ocr_engines['keras_ocr'] = lambda img: kerasocr_ocr(img, self.kerasocr_pipeline, self.clean_license_plate, getattr(self, 'log_result', None))
+        else:
+            self.kerasocr_pipeline = None
+        if ocr_predictor:
+            self.doctr_predictor = ocr_predictor(pretrained=True)
+            self.ocr_engines['doctr'] = lambda img: doctr_ocr(img, self.doctr_predictor, self.clean_license_plate, getattr(self, 'log_result', None))
+        else:
+            self.doctr_predictor = None
         if easyocr:
             self.easyocr_reader = easyocr.Reader(['en'])
             self.ocr_engines['easyocr'] = lambda img: easyocr_ocr(img, self.easyocr_reader, self.clean_license_plate, getattr(self, 'log_result', None))
