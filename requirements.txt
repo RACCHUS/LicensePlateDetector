@@ -1,3 +1,68 @@
+Pillow
+cv2
+doctr
+easyocr
+efficientnet
+essential_generators
+h5py
+imgaug
+keras_applications
+numpy<2.0
+opencv-python
+paddleocr
+pandas
+pyautogui
+pytesseract
+pytz
+scikit-image
+scipy
+tensorflow==2.11.0
+torch
+tzdata
+keras_ocr
+keras_applications
+efficientnet-tfkeras
+keras==2.11.0
+tensorflow==2.11.0
+[pytz]
+# For keras-ocr data generation
+essential_generators
+# Ensure numpy is <2.0 for imgaug/keras-ocr compatibility
+numpy<2.0
+# imgaug is required for keras-ocr
+imgaug
+# --- Core dependencies for OCR engines (added from official docs) ---
+imgaug
+scikit-image
+python-bidi
+mplcursors
+weasyprint
+efficientnet
+tensorflow
+huggingface_hub
+langdetect
+rapidfuzz
+pyclipper
+validators
+sympy
+ pypdfium2
+# Required for doctr
+tqdm
+anyascii
+# Additional doctr dependencies
+defusedxml
+shapely
+# Common doctr/ML dependencies (optional but recommended)
+matplotlib
+scipy
+pandas
+requests
+h5py
+pyyaml
+python-levenshtein
+editdistance
+opencv-contrib-python
+scikit-learn
 # For Windows users:
 # - If you have an NVIDIA GPU and want GPU acceleration, install paddlepaddle-gpu as per https://www.paddlepaddle.org.cn/install/quick
 # - Otherwise, install paddlepaddle (CPU version)
@@ -10,7 +75,8 @@
 # https://pytorch.org/get-started/locally/
 opencv-python
 easyocr
-paddeocr
+pytesseract
+paddleocr
 paddlepaddle
 Pillow
 tk
@@ -21,4 +87,5 @@ python-doctr
 keras<3.0
 tensorflow-cpu<2.13
 torch
+torchvision
 typing-extensions>=4.12.2

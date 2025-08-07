@@ -1,3 +1,5 @@
+from utils.image_processing import preprocess_image
+from utils.validation import clean_license_plate, get_consensus_result
 import threading
 import time
 from dataclasses import dataclass
@@ -7,15 +9,24 @@ from tkinter import messagebox
 import numpy as np
 from PIL import Image, ImageTk
 
-# OCR imports (to be handled with error catching)
-try:
-    import keras_ocr
-except ImportError:
-    keras_ocr = None
-try:
-    from doctr.models import ocr_predictor
-except ImportError:
-    ocr_predictor = None
+# --- Suppress PaddleOCR/PaddleX info/progress output ---
+import logging
+import warnings
+import os
+logging.getLogger("paddle").setLevel(logging.ERROR)
+logging.getLogger("paddlex").setLevel(logging.ERROR)
+logging.getLogger("paddleocr").setLevel(logging.ERROR)
+logging.getLogger("PIL").setLevel(logging.ERROR)
+warnings.filterwarnings("ignore")
+import logging
+import warnings
+import os
+logging.getLogger("paddle").setLevel(logging.ERROR)
+logging.getLogger("paddlex").setLevel(logging.ERROR)
+logging.getLogger("paddleocr").setLevel(logging.ERROR)
+logging.getLogger("PIL").setLevel(logging.ERROR)
+warnings.filterwarnings("ignore")
+os.environ["TQDM_DISABLE"] = "1"
 try:
     import easyocr
 except ImportError:
@@ -24,15 +35,22 @@ try:
     from paddleocr import PaddleOCR
 except ImportError:
     PaddleOCR = None
+try:
+    import pytesseract
+except ImportError:
+    pytesseract = None
 
 import cv2
 import pyautogui
 # Import state filter
-from state_filters import is_state_name_or_abbreviation
-from easyocr_engine import easyocr_ocr, OCRResult
-from paddleocr_engine import paddleocr_ocr
-from doctr_engine import doctr_ocr
-from kerasocr_engine import kerasocr_ocr
+from utils.state_filters import is_state_name_or_abbreviation
+
+from ocr.easyocr_engine import easyocr_ocr
+from ocr.paddleocr_engine import paddleocr_ocr
+from ocr.doctr_engine import doctr_ocr
+from ocr.kerasocr_engine import kerasocr_ocr
+from models import OCRResult
+from ocr.tesseract_engine import tesseract_ocr
 
 # Configuration
 CONFIGURATION = {
@@ -46,107 +64,72 @@ CONFIGURATION = {
     'image_resize_height': 50
 }
 
-@dataclass
-class OCRResult:
-    text: str
-    confidence: float
-    source: str
+
 
 class LicensePlateRecognizer:
     def __init__(self, config: Dict):
         self.ocr_engines = {}
         self.confidence_threshold = config['confidence_threshold']
         self.agreement_threshold = config['agreement_threshold']
-        if keras_ocr:
+        # Debug: Print PaddleOCR/PaddleX model cache directory and contents
+        import os
+        paddlex_models_dir = os.path.expanduser('~/.paddlex/official_models')
+        print(f"[DEBUG] PaddleX/PaddleOCR model cache directory: {paddlex_models_dir}")
+        if os.path.exists(paddlex_models_dir):
+            for root, dirs, files in os.walk(paddlex_models_dir):
+                level = root.replace(paddlex_models_dir, '').count(os.sep)
+                indent = ' ' * 2 * level
+                print(f"{indent}{os.path.basename(root)}/")
+                subindent = ' ' * 2 * (level + 1)
+                for f in files:
+                    print(f"{subindent}{f}")
+        else:
+            print(f"[DEBUG] Directory does not exist: {paddlex_models_dir}")
+        try:
+            import keras_ocr
             self.kerasocr_pipeline = keras_ocr.pipeline.Pipeline()
-            self.ocr_engines['keras_ocr'] = lambda img: kerasocr_ocr(img, self.kerasocr_pipeline, self.clean_license_plate, getattr(self, 'log_result', None))
-        else:
+            self.ocr_engines['keras_ocr'] = lambda img: kerasocr_ocr(img, self.kerasocr_pipeline, clean_license_plate, None)
+        except ImportError:
             self.kerasocr_pipeline = None
-        if ocr_predictor:
+        try:
+            from doctr.models import ocr_predictor
             self.doctr_predictor = ocr_predictor(pretrained=True)
-            self.ocr_engines['doctr'] = lambda img: doctr_ocr(img, self.doctr_predictor, self.clean_license_plate, getattr(self, 'log_result', None))
-        else:
+            self.ocr_engines['doctr'] = lambda img: doctr_ocr(img, self.doctr_predictor, clean_license_plate, None)
+        except ImportError:
             self.doctr_predictor = None
         if easyocr:
             self.easyocr_reader = easyocr.Reader(['en'])
-            self.ocr_engines['easyocr'] = lambda img: easyocr_ocr(img, self.easyocr_reader, self.clean_license_plate, getattr(self, 'log_result', None))
+            self.ocr_engines['easyocr'] = lambda img: easyocr_ocr(img, self.easyocr_reader, clean_license_plate, None)
         else:
             self.easyocr_reader = None
         if PaddleOCR:
+            print("[DEBUG] Initializing PaddleOCR with use_textline_orientation=True, lang='en'")
             self.paddleocr_reader = PaddleOCR(use_textline_orientation=True, lang='en')
-            self.ocr_engines['paddleocr'] = lambda img: paddleocr_ocr(img, self.paddleocr_reader, self.clean_license_plate, getattr(self, 'log_result', None))
+            print(f"[DEBUG] PaddleOCR reader object: {self.paddleocr_reader}")
+            self.ocr_engines['paddleocr'] = lambda img: paddleocr_ocr(img, self.paddleocr_reader, clean_license_plate, None)
         else:
             self.paddleocr_reader = None
+        if pytesseract:
+            self.tesseract_config = r'--oem 3 --psm 8 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+            self.ocr_engines['tesseract'] = lambda img: tesseract_ocr(img, self.tesseract_config, clean_license_plate, None)
+        else:
+            self.tesseract_config = None
 
-    def preprocess_image(self, image):
-        # Convert to grayscale
-        img = np.array(image)
-        if len(img.shape) == 3:
-            img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-        # Gaussian blur
-        img = cv2.GaussianBlur(img, (5, 5), 0)
-        # OTSU threshold
-        _, img = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        # Morphological closing
-        kernel = np.ones((3, 3), np.uint8)
-        img = cv2.morphologyEx(img, cv2.MORPH_CLOSE, kernel)
-        # Resize if height < 50
-        h = img.shape[0]
-        if h < CONFIGURATION['image_resize_height']:
-            scale = CONFIGURATION['image_resize_height'] / h
-            img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
-        return Image.fromarray(img)
-
-    def clean_license_plate(self, text) -> str:
-        text = ''.join(filter(str.isalnum, text.upper()))
-        # Filter out state names/abbreviations
-        if is_state_name_or_abbreviation(text):
-            return ''
-        # Only accept likely license plate numbers (alphanumeric, length 3-10)
-        if CONFIGURATION['min_plate_length'] <= len(text) <= CONFIGURATION['max_plate_length']:
-            return text
-        return ''
-
-    def get_consensus_result(self, results: List[OCRResult]):
-        filtered = [r for r in results if r.confidence > 0.1]
-        groups = {}
-        for r in filtered:
-            clean = self.clean_license_plate(r.text)
-            if clean:
-                groups.setdefault(clean, []).append(r)
-        total = len(filtered)
-        for text, group in groups.items():
-            agreement = len(group) / max(1, total)
-            avg_conf = sum(r.confidence for r in group) / len(group)
-            if agreement >= self.agreement_threshold and avg_conf >= self.confidence_threshold:
-                return text, avg_conf, False
-        # No strong consensus
-        if groups:
-            # Return most common
-            text, group = max(groups.items(), key=lambda x: len(x[1]))
-            avg_conf = sum(r.confidence for r in group) / len(group)
-            return text, avg_conf, True
-        return '', 0.0, True
 
     def recognize_license_plate(self, image):
-        # Prepare different image formats for each engine
-        processed = self.preprocess_image(image)
+        processed = preprocess_image(image)
         np_image = np.array(image)
         results = []
         for name, engine in self.ocr_engines.items():
             try:
                 if name == 'keras_ocr':
-                    # keras-ocr expects a color image (numpy array, RGB)
                     result = engine(image)
                 elif name == 'paddleocr':
-                    # paddleocr expects a numpy array (BGR)
                     bgr_img = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR) if len(np_image.shape) == 3 else np_image
                     result = engine(bgr_img)
                 elif name == 'doctr':
-                    # doctr expects a numpy array (RGB)
                     result = engine(np_image)
                 elif name == 'easyocr':
-                    # easyocr works well with preprocessed PIL image
                     result = engine(processed)
                 else:
                     result = engine(processed)
@@ -154,7 +137,7 @@ class LicensePlateRecognizer:
                 print(debug_raw)
                 if hasattr(self, 'log_result'):
                     self.log_result(debug_raw)
-                cleaned = self.clean_license_plate(result.text)
+                cleaned = clean_license_plate(result.text)
                 debug_cleaned = f"Cleaned ({name}): '{cleaned}'"
                 print(debug_cleaned)
                 if hasattr(self, 'log_result'):
@@ -166,7 +149,7 @@ class LicensePlateRecognizer:
                 if hasattr(self, 'log_result'):
                     self.log_result(error_msg)
                 results.append(OCRResult('', 0.0, name))
-        return self.get_consensus_result(results)
+        return get_consensus_result(results, len(self.ocr_engines), self.agreement_threshold, self.confidence_threshold)
 
 class ScreenAutomation:
     def __init__(self):
