@@ -1,11 +1,13 @@
+
 import pyautogui
 import cv2
 import numpy as np
 import time
+from typing import Optional, Tuple
 
 class ScreenAutomation:
     def __init__(self):
-        self.target_field = None
+        self.target_field: Optional[Tuple[int, int]] = None
         self.field_template = None
 
     def capture_screen_region(self, region=None):

@@ -1,0 +1,32 @@
+/* Dark mode QSS for License Plate Detector */
+QWidget {
+    background-color: #232629;
+    color: #f0f0f0;
+}
+QPushButton {
+    background-color: #353941;
+    color: #f0f0f0;
+    border: 1px solid #444;
+    border-radius: 4px;
+    padding: 5px 12px;
+}
+QPushButton:hover {
+    background-color: #3c4049;
+}
+QPushButton:pressed {
+    background-color: #22242a;
+}
+QLineEdit, QTextEdit {
+    background-color: #2b2e33;
+    color: #f0f0f0;
+    border: 1px solid #444;
+    border-radius: 4px;
+}
+QLabel {
+    color: #f0f0f0;
+}
+QStatusBar {
+    background: #232629;
+    color: #f0f0f0;
+    border-top: 1px solid #444;
+}

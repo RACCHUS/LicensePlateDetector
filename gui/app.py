@@ -9,7 +9,18 @@ from ocr.easyocr_engine import EasyOCREngine
 from ocr.paddleocr_engine import PaddleOCREngine
 from automation.screen import ScreenAutomation
 
+
 class LicensePlateApp:
+    def __init__(self):
+        self.recognizer = None  # To be set up with new modular recognizer
+        self.screen_automation = ScreenAutomation()
+        self.running = False
+        self.root = tk.Tk()
+        self.root.title("License Plate Recognition System")
+        self.root.geometry("600x400")
+        self.status_var = tk.StringVar(value="Ready")
+        self.setup_gui()
+
     def set_target_field(self):
         def capture_click():
             try:
@@ -31,14 +42,6 @@ class LicensePlateApp:
                 self.status_var.set('Target field selection cancelled')
                 self.log_result(f'Target field selection cancelled: {e}')
         threading.Thread(target=capture_click, daemon=True).start()
-    def __init__(self):
-        self.recognizer = None  # To be set up with new modular recognizer
-        self.screen_automation = ScreenAutomation()
-        self.running = False
-        self.root = tk.Tk()
-        self.root.title("License Plate Recognition System")
-        self.root.geometry("600x400")
-        self.setup_gui()
 
     def setup_gui(self):
         control_frame = tk.Frame(self.root)
@@ -49,7 +52,6 @@ class LicensePlateApp:
         self.stop_button.pack(side=tk.LEFT, padx=5)
         self.calibrate_button = tk.Button(control_frame, text="Set Target Field", command=self.set_target_field, bg='blue', fg='white')
         self.calibrate_button.pack(side=tk.LEFT, padx=5)
-        self.status_var = tk.StringVar(value="Ready")
         status_label = tk.Label(self.root, textvariable=self.status_var, font=('Arial', 12))
         status_label.pack(pady=5)
         results_frame = tk.Frame(self.root)

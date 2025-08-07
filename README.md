@@ -6,7 +6,7 @@ This project is a modular, professional Python application for license plate det
 
 ## Features
 - Modular codebase: OCR engines, GUI, automation, utilities, and data models are separated for clarity and maintainability.
-- Tkinter-based GUI for user interaction and results display.
+- PyQt-based GUI for user interaction and results display (modularized in `gui/`).
 - Multiple OCR engine support (Tesseract, EasyOCR, PaddleOCR, and more planned).
 - Utilities for image preprocessing, plate cleaning, and consensus logic.
 - Automation for screen capture and text field interaction.
@@ -14,13 +14,13 @@ This project is a modular, professional Python application for license plate det
 
 ## Project Structure
 ```
-LicensePlateDetectorJules/
-├── main.py                # Entry point
+LicensePlateDetector/
+├── main.py                # Legacy entry point (see gui/qt_app.py for PyQt)
 ├── requirements.txt
 ├── README.md
-├── plan_refactor_structure.md
+├── plan.md / plan_pyqt_migration.md
 ├── ocr/                   # OCR engine modules
-├── gui/                   # GUI logic and widgets
+├── gui/                   # PyQt GUI logic, widgets, dialogs, settings, logger
 ├── automation/            # Screen automation
 ├── utils/                 # Image processing and validation
 ├── models.py              # Data models
@@ -39,9 +39,10 @@ LicensePlateDetectorJules/
    ```
 
 ## Usage
-Run the application:
+
+Run the PyQt application:
 ```bash
-python main.py
+python gui/qt_app.py
 ```
 
 ## Testing
@@ -53,6 +54,7 @@ python -m unittest discover tests
 ## Contributing
 - Please open issues or pull requests for bugs, improvements, or new OCR engine integrations.
 - The codebase is structured for easy extension and testing.
+- For PyQt UI/UX improvements, see the `gui/` directory and QSS theming support.
 
 ## License
 MIT License
