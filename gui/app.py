@@ -10,6 +10,27 @@ from ocr.paddleocr_engine import PaddleOCREngine
 from automation.screen import ScreenAutomation
 
 class LicensePlateApp:
+    def set_target_field(self):
+        def capture_click():
+            try:
+                self.status_var.set('Click on the target field...')
+                self.root.iconify()
+                messagebox.showinfo('Set Target Field', 'Move your mouse to the target field and left-click to set its position.')
+                import pyautogui
+                pos = None
+                while pos is None:
+                    if pyautogui.mouseDown(button='left'):
+                        pos = pyautogui.position()
+                        break
+                self.root.deiconify()
+                self.status_var.set(f'Target field set at {pos}')
+                self.log_result(f'Target field set at {pos}')
+                self.screen_automation.target_field = (pos.x, pos.y)
+            except Exception as e:
+                self.root.deiconify()
+                self.status_var.set('Target field selection cancelled')
+                self.log_result(f'Target field selection cancelled: {e}')
+        threading.Thread(target=capture_click, daemon=True).start()
     def __init__(self):
         self.recognizer = None  # To be set up with new modular recognizer
         self.screen_automation = ScreenAutomation()
@@ -43,4 +64,26 @@ class LicensePlateApp:
         interval_entry = tk.Entry(config_frame, textvariable=self.interval_var, width=5)
         interval_entry.pack(side=tk.LEFT, padx=5)
 
-    # ...existing methods (set_target_field, capture_target_position, start_recognition, stop_recognition, recognition_loop, show_alert, log_result, run)...
+
+    def start_recognition(self):
+        if not self.running:
+            self.running = True
+            self.status_var.set("Running")
+            self.log_result("Recognition started.")
+            threading.Thread(target=self.recognition_loop, daemon=True).start()
+
+    def stop_recognition(self):
+        self.running = False
+        self.status_var.set("Stopped")
+        self.log_result("Recognition stopped.")
+
+    def recognition_loop(self):
+        while self.running:
+            # Simulate recognition result
+            now = time.strftime('%H:%M:%S')
+            self.log_result(f"{now} - Dummy recognition result: ABC1234 (Conf: 0.95)")
+            time.sleep(float(self.interval_var.get()))
+
+    def log_result(self, message):
+        self.results_text.insert(tk.END, message + '\n')
+        self.results_text.see(tk.END)
