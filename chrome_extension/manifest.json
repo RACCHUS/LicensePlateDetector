@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "License Plate Input Automation",
+  "version": "0.1",
+  "description": "Receives license plate data from the desktop app and fills browser fields.",
+  "permissions": ["scripting", "activeTab", "nativeMessaging"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.jpeg",
+      "32": "icon32.jpeg",
+      "48": "icon48.jpeg",
+      "128": "icon128.jpeg"
+    }
+  },
+  "icons": {
+    "16": "icon16.jpeg",
+    "32": "icon32.jpeg",
+    "48": "icon48.jpeg",
+    "128": "icon128.jpeg"
+  }
+}

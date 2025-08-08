@@ -1,0 +1,8 @@
+{
+  "name": "com.licenseplatedetector.host",
+  "description": "Native messaging host for License Plate Detector integration.",
+  "path": "C:\\Users\\richa\\Documents\\Code\\LicensePlateDetector\\native_host.bat",
+  "type": "stdio",
+  "allowed_origins": [
+  "chrome-extension://aepkadgpoikpckceenbeljcalcamaphb/"]
+}
