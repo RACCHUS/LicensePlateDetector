@@ -5,6 +5,7 @@ from PyQt5.QtGui import QIcon
 import threading
 import time
 from .region_selector_dialog import RegionSelectorDialog
+from .screen_picker_dialog import ScreenPickerDialog
 from .notifier import Notifier
 from .settings_manager import load_settings, save_settings
 from .logger import log_info, log_error
@@ -94,12 +95,53 @@ class MainWidget(QWidget):
             self.log_result('Target field selection cancelled.')
 
     def set_scan_region(self):
-        dialog = RegionSelectorDialog(self)
-        if dialog.exec_() == dialog.Accepted and dialog.selected_region:
-            self.scan_region = dialog.selected_region
-            save_settings({'scan_region': self.scan_region})
-            self.log_result(f'Scan region set to {self.scan_region}')
-            Notifier.info(self, f'Scan region set to {self.scan_region}')
+        # Step 1: Load last used screen and region
+        settings = load_settings()
+        last_screen_index = settings.get('scan_screen', 0)
+        last_region = settings.get('scan_region', None)
+        from PyQt5.QtWidgets import QApplication
+        screens = QApplication.screens()
+        picker = ScreenPickerDialog(screens, self)
+        # Pre-select last used screen if available, else default to first
+        if 0 <= last_screen_index < len(screens):
+            picker.list_widget.setCurrentRow(last_screen_index)
+        else:
+            picker.list_widget.setCurrentRow(0)
+            last_screen_index = 0
+        if picker.exec_() != picker.Accepted:
+            self.log_result('Scan region selection cancelled or not implemented.')
+            return
+        screen_index = picker.get_selected_screen_index()
+        if screen_index is None or not (0 <= screen_index < len(screens)):
+            self.log_result('Scan region selection cancelled or not implemented.')
+            return
+        selected_screen = screens[int(screen_index)]
+        # Step 2: Show region selector on that screen, pre-fill with last region if available and same screen
+        region_dialog = RegionSelectorDialog(selected_screen)
+        region_dialog.setGeometry(selected_screen.geometry())
+        region_dialog.setWindowFlags(region_dialog.windowFlags() | Qt.WindowStaysOnTopHint)
+        # Accessibility: add tooltip to region selector
+        try:
+            region_dialog.setToolTip('Drag to select a region. ESC or Cancel to abort. Coordinates shown live.')
+        except Exception:
+            pass
+        # If last region exists and is for this screen, pre-fill
+        if last_region and int(screen_index) == int(last_screen_index):
+            try:
+                from PyQt5.QtCore import QPoint
+                x, y, w, h = last_region
+                region_dialog.start_pos = QPoint(x, y)
+                region_dialog.end_pos = QPoint(x + w, y + h)
+                region_dialog.drawing = False
+                region_dialog.update_region_label()
+                region_dialog.update()
+            except Exception:
+                pass
+        if region_dialog.exec_() == region_dialog.Accepted and region_dialog.selected_region:
+            self.scan_region = region_dialog.selected_region
+            save_settings({'scan_region': self.scan_region, 'scan_screen': int(screen_index)})
+            self.log_result(f'Scan region set to {self.scan_region} on screen {int(screen_index)+1}')
+            Notifier.info(self, f'Scan region set to {self.scan_region} on screen {int(screen_index)+1}')
         else:
             self.log_result('Scan region selection cancelled or not implemented.')
 
