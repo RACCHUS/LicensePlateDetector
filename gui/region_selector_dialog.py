@@ -9,13 +9,12 @@ class RegionSelectorDialog(QDialog):
         super().__init__(None)
         self.setWindowTitle('DEBUG: Region Selector Test Dialog')
         self.selected_region = None
-        # Frameless and always-on-top
-        flags = 0x00000800 | 0x00000002 | 0x00040000  # Frameless, Dialog, AlwaysOnTop
-        from PyQt5.QtCore import Qt
-        self.setWindowFlags(Qt.WindowFlags(flags))
+        # Frameless and always-on-top using Qt enums
+        flags = Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint  # type: ignore
+        self.setWindowFlags(flags)
         # Set translucent background attribute if available
         try:
-            self.setAttribute(getattr(Qt, 'WA_TranslucentBackground', 0x00000080))
+            self.setAttribute(Qt.WA_TranslucentBackground)  # type: ignore
         except Exception:
             pass
         self.setStyleSheet('background-color: rgba(68, 170, 255, 120);')
@@ -89,8 +88,8 @@ class RegionSelectorDialog(QDialog):
         if getattr(self, 'start_pos', None) is not None and getattr(self, 'end_pos', None) is not None:
             painter = QPainter(self)
             painter.setRenderHint(QPainter.Antialiasing)
-            # Qt.SolidLine is 1 in PyQt5, use int for compatibility
-            painter.setPen(QPen(QColor(255, 0, 0, 200), 2, 1))
+            # Use Qt.SolidLine enum for pen style
+            painter.setPen(QPen(QColor(255, 0, 0, 200), 2, Qt.SolidLine))  # type: ignore
             painter.setBrush(QColor(255, 0, 0, 50))
             rect = self.get_rect()
             painter.drawRect(rect)

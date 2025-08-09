@@ -28,5 +28,11 @@
     "32": "icon32.jpeg",
     "48": "icon48.jpeg",
     "128": "icon128.jpeg"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["select_field.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

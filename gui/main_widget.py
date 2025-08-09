@@ -1,6 +1,9 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QTextEdit, QLineEdit, QDialog
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QTextEdit, QLineEdit
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
+from typing import Optional, Tuple
+from .dialogs import ClickCaptureDialog
+from .region_helpers import show_region_selector
 
 import threading
 import time
@@ -13,17 +16,37 @@ from utils.state_filters import is_state_name_or_abbreviation
 
 class MainWidget(QWidget):
     def __init__(self, recognizer, screen_automation):
+        """Initialize the main widget and UI."""
         super().__init__()
         self.recognizer = recognizer
         self.screen_automation = screen_automation
-        self.recognition_running = False
-        self.recognition_thread = None
         settings = load_settings()
-        self.scan_region = tuple(settings.get('scan_region', (100, 100, 200, 60)))
-        self.target_field = None
+        self.scan_region: Tuple[int, int, int, int] = tuple(settings.get('scan_region', (100, 100, 200, 60)))
+        self.target_field: Optional[Tuple[int, int]] = None
+        self.input_mode = settings.get('input_mode', 'browser_extension')
         self._init_ui()
+        self._setup_shortcuts()
+        from .recognition_controller import RecognitionController
+        self.recognition_controller = RecognitionController(self)
+        self.recognition_controller.result_signal.connect(self.log_result)
+        self.recognition_controller.error_signal.connect(self.show_error)
+        self.recognition_controller.status_signal.connect(self.show_status)
+        self.recognition_running = False
+        # Set initial state of Set Target Field button based on input mode
+        self._update_set_field_btn_state()
+
+    def toggle_recognition_hotkey(self):
+        """Toggle recognition on hotkey press."""
+        # Use controller state for toggling
+        if self.status_label.text() == 'Status: Running':
+            self.stop_recognition()
+            self.log_result('Recognition stopped by hotkey (Ctrl+Shift+L).')
+        else:
+            self.start_recognition()
+            self.log_result('Recognition started by hotkey (Ctrl+Shift+L).')
 
     def _init_ui(self):
+        """Set up the main UI layout and widgets."""
         vbox = QVBoxLayout()
         hbox = QHBoxLayout()
         self.start_btn = QPushButton(QIcon.fromTheme('media-playback-start'), 'Start Recognition')
@@ -38,6 +61,18 @@ class MainWidget(QWidget):
         hbox.addWidget(self.stop_btn)
         hbox.addWidget(self.set_field_btn)
         hbox.addWidget(self.set_region_btn)
+
+        # Input mode selector
+        from PyQt5.QtWidgets import QComboBox
+        self.input_mode_combo = QComboBox()
+        self.input_mode_combo.addItem('Browser Extension', 'browser_extension')
+        self.input_mode_combo.addItem('Keystroke Automation', 'keystroke')
+        self.input_mode_combo.setCurrentIndex(0 if self.input_mode == 'browser_extension' else 1)
+        self.input_mode_combo.setToolTip('Choose how to input recognized plates (browser extension is recommended)')
+        self.input_mode_combo.currentIndexChanged.connect(self._on_input_mode_changed)
+        vbox.addWidget(QLabel('Input Mode:'))
+        vbox.addWidget(self.input_mode_combo)
+
         self.status_label = QLabel('Status: Ready')
         self.status_label.setToolTip('Shows the current status of the recognition system')
         self.results_text = QTextEdit()
@@ -66,25 +101,43 @@ class MainWidget(QWidget):
                 self.setStyleSheet(f.read())
         except Exception:
             pass  # No custom style applied if file not found
+        self._connect_signals()
+
+    def _on_input_mode_changed(self, idx):
+        mode = self.input_mode_combo.currentData()
+        self.input_mode = mode
+        save_settings({'input_mode': mode})
+        self._update_set_field_btn_state()
+        self.log_result(f"Input mode changed to: {self.input_mode_combo.currentText()}")
+
+    def _update_set_field_btn_state(self):
+        # Disable Set Target Field button in extension mode, enable in keystroke mode
+        if self.input_mode == 'browser_extension':
+            self.set_field_btn.setEnabled(False)
+            self.set_field_btn.setToolTip('Field selection is handled by the browser extension in this mode.')
+            # Visually indicate disabled state
+            self.set_field_btn.setStyleSheet('background-color: #e0e0e0; color: #888; border: 1px solid #bbb;')
+        else:
+            self.set_field_btn.setEnabled(True)
+            self.set_field_btn.setToolTip('Click to select the field where results will be inserted')
+            self.set_field_btn.setStyleSheet('')  # Reset to default
+    def _setup_shortcuts(self):
+        """Set up global hotkeys for the widget."""
+        from PyQt5.QtWidgets import QShortcut
+        from PyQt5.QtGui import QKeySequence
+        self.toggle_hotkey = QShortcut(QKeySequence('Ctrl+Shift+L'), self)
+        self.toggle_hotkey.setAutoRepeat(False)
+        self.toggle_hotkey.activated.connect(self.toggle_recognition_hotkey)
+
+    def _connect_signals(self):
+        """Connect button signals to their slots."""
         self.start_btn.clicked.connect(self.start_recognition)
         self.stop_btn.clicked.connect(self.stop_recognition)
         self.set_field_btn.clicked.connect(self.set_target_field)
         self.set_region_btn.clicked.connect(self.set_scan_region)
 
     def set_target_field(self):
-        # Show a transparent overlay and capture the next mouse click position
-        class ClickCaptureDialog(QDialog):
-            def __init__(self, parent=None):
-                super().__init__(parent)
-                self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint | Qt.Dialog)
-                self.setWindowState(Qt.WindowFullScreen)
-                self.setAttribute(Qt.WA_TranslucentBackground)
-                self.setCursor(Qt.CrossCursor)
-                self.clicked_pos = None
-            def mousePressEvent(self, event):
-                if event.button() == Qt.LeftButton:
-                    self.clicked_pos = (event.globalX(), event.globalY())
-                    self.accept()
+        """Show overlay and capture the next mouse click position for the target field."""
         dialog = ClickCaptureDialog(self)
         Notifier.info(self, 'Click anywhere on the screen to set the target field position.')
         if dialog.exec_() == dialog.Accepted and dialog.clicked_pos:
@@ -95,50 +148,15 @@ class MainWidget(QWidget):
             self.log_result('Target field selection cancelled.')
 
     def set_scan_region(self):
-        # Step 1: Load last used screen and region
+        """Show dialogs to select the scan region on a chosen screen."""
         settings = load_settings()
         last_screen_index = settings.get('scan_screen', 0)
         last_region = settings.get('scan_region', None)
         from PyQt5.QtWidgets import QApplication
         screens = QApplication.screens()
-        picker = ScreenPickerDialog(screens, self)
-        # Pre-select last used screen if available, else default to first
-        if 0 <= last_screen_index < len(screens):
-            picker.list_widget.setCurrentRow(last_screen_index)
-        else:
-            picker.list_widget.setCurrentRow(0)
-            last_screen_index = 0
-        if picker.exec_() != picker.Accepted:
-            self.log_result('Scan region selection cancelled or not implemented.')
-            return
-        screen_index = picker.get_selected_screen_index()
-        if screen_index is None or not (0 <= screen_index < len(screens)):
-            self.log_result('Scan region selection cancelled or not implemented.')
-            return
-        selected_screen = screens[int(screen_index)]
-        # Step 2: Show region selector on that screen, pre-fill with last region if available and same screen
-        region_dialog = RegionSelectorDialog(selected_screen)
-        region_dialog.setGeometry(selected_screen.geometry())
-        region_dialog.setWindowFlags(region_dialog.windowFlags() | Qt.WindowStaysOnTopHint)
-        # Accessibility: add tooltip to region selector
-        try:
-            region_dialog.setToolTip('Drag to select a region. ESC or Cancel to abort. Coordinates shown live.')
-        except Exception:
-            pass
-        # If last region exists and is for this screen, pre-fill
-        if last_region and int(screen_index) == int(last_screen_index):
-            try:
-                from PyQt5.QtCore import QPoint
-                x, y, w, h = last_region
-                region_dialog.start_pos = QPoint(x, y)
-                region_dialog.end_pos = QPoint(x + w, y + h)
-                region_dialog.drawing = False
-                region_dialog.update_region_label()
-                region_dialog.update()
-            except Exception:
-                pass
-        if region_dialog.exec_() == region_dialog.Accepted and region_dialog.selected_region:
-            self.scan_region = region_dialog.selected_region
+        region, screen_index = show_region_selector(self, screens, last_region, last_screen_index)
+        if region is not None and screen_index is not None:
+            self.scan_region = region
             save_settings({'scan_region': self.scan_region, 'scan_screen': int(screen_index)})
             self.log_result(f'Scan region set to {self.scan_region} on screen {int(screen_index)+1}')
             Notifier.info(self, f'Scan region set to {self.scan_region} on screen {int(screen_index)+1}')
@@ -146,59 +164,33 @@ class MainWidget(QWidget):
             self.log_result('Scan region selection cancelled or not implemented.')
 
     def start_recognition(self):
+        """Start the recognition thread (via RecognitionController)."""
         if not self.recognition_running:
             self.recognition_running = True
             self.status_label.setText('Status: Running')
             self.log_result('Recognition started.')
-            self.recognition_thread = threading.Thread(target=self.recognition_loop, daemon=True)
-            self.recognition_thread.start()
+            self.recognition_controller.start()
 
-    def recognition_loop(self):
-        while self.recognition_running:
-            try:
-                if self.screen_automation:
-                    img = self.screen_automation.capture_screen_region(self.scan_region)
-                    text, conf, alert = self.recognizer.recognize_license_plate(img)
-                    now = time.strftime('%H:%M:%S')
-                    detected_state = None
-                    if text and is_state_name_or_abbreviation(text):
-                        detected_state = text
-                    if text:
-                        state_info = f" | State: {detected_state}" if detected_state else ""
-                        self.log_result(f"{now} - Detected: {text} (Conf: {conf:.2f}){state_info}")
-                        # If confident and target field set, auto-insert
-                        if not alert and self.target_field:
-                            self.screen_automation.click_and_type(text, self.target_field)
-                            self.log_result(f"{now} - Auto-inserted: {text}")
-                        elif alert:
-                            self.log_result(f"{now} - Manual confirmation needed")
-                            Notifier.info(self, f"Manual confirmation needed for: {text}")
-                    else:
-                        self.log_result(f"{now} - No plate detected.")
-                else:
-                    self.show_error("ScreenAutomation not available.")
-            except Exception as e:
-                self.show_error(f"Recognition error: {e}")
-            try:
-                interval = float(self.interval_entry.text())
-                if interval < 0.1:
-                    interval = 0.1
-            except Exception:
-                interval = 2.0
-            time.sleep(interval)
+    # recognition_loop is now handled by RecognitionController
 
 
-    def show_error(self, message):
+    def show_error(self, message: str):
+        """Show an error message in the log and as a dialog."""
         self.log_result(f"ERROR: {message}")
         log_error(message)
         Notifier.error(self, message)
 
     def stop_recognition(self):
+        """Stop the recognition thread (via RecognitionController)."""
         if self.recognition_running:
             self.recognition_running = False
             self.status_label.setText('Status: Stopped')
             self.log_result('Recognition stopped.')
+            self.recognition_controller.stop()
+    def show_status(self, message: str):
+        Notifier.info(self, message)
 
-    def log_result(self, message):
+    def log_result(self, message: str):
+        """Append a message to the results log."""
         self.results_text.append(message)
         log_info(message)

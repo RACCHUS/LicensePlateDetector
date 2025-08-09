@@ -1,8 +1,12 @@
-
-
 ## Project Overview
 
 The **License Plate Detector** is a Python application that uses multiple OCR engines to detect and automatically input license plate text. The application captures screen regions, processes them through various OCR engines, and uses consensus-based validation to determine the most accurate license plate text, if not confident it will alert the user to manually input the text.
+
+**New Features:**
+- Browser input automation via Chrome extension (default, secure, robust)
+- User can select the target field for license plate input in the browser (via extension popup)
+- Keystroke-based input fallback remains available
+- Notifications only on low-confidence OCR
 
 ### Current Architecture
 
@@ -11,6 +15,7 @@ The **License Plate Detector** is a Python application that uses multiple OCR en
 - **OCR Engines**: Modular engine files in `ocr/` directory for different OCR backends
 - **Utilities**: `utils/` directory with image processing, validation, and state filtering
 - **State Filtering**: US state name/abbreviation filtering available and integrated
+- **Browser Automation**: Chrome extension with native messaging and user-selectable field; browser automation fallback (Selenium/Playwright) planned
 
 ### Available OCR Engines
 
@@ -56,12 +61,7 @@ The **License Plate Detector** is a Python application that uses multiple OCR en
 
 **Emergency Rollback**: If something breaks, use `git reset --hard HEAD~1`
 
-### Phase 1: Import and Runtime Fixes (Next Sprint)
-1. **Standardize engine organization** - Move all engines to `ocr/` directory
-2. **Fix log_result method calls** - Add missing method to LicensePlateRecognizer or handle gracefully
-3. **Fix GUI interaction bugs** - Add missing instance variables and fix variable scoping
-
-### Phase 2: Feature Implementation (Future)
+### Phase 1: Feature Implementation (Future)
 1. **Integrate state detection** - Use existing state_filters.py utilities in OCR workflow
 2. **Add state reporting** - Include state detection in GUI and results output
 3. **Add comprehensive error handling**
@@ -77,14 +77,10 @@ The **License Plate Detector** is a Python application that uses multiple OCR en
 
 
 ### Project Structure Issues
-- **Import Paths**: Inconsistent between actual file locations and import statements
 
 ## Technical Debt
 
 ### Architecture Issues
-- **Mixed Engine Organization**: Engines split between root and `ocr/` directories
-- **Import Path Confusion**: Imports don't match actual file locations
-- **Incomplete Implementations**: Partial class definitions and syntax errors
 - **Python Version Mismatch**: Running Python 3.13.4 with packages expecting 3.10.x
 
 
@@ -125,39 +121,22 @@ The **License Plate Detector** is a Python application that uses multiple OCR en
 
 ## Conclusion
 
-The License Plate Detector project has a well-designed architecture with multi-engine OCR integration and consensus-based validation. However, it currently **cannot run due to critical syntax errors and import issues**. The project is in a broken state that requires immediate fixes to become functional.
-
-
-
+The License Plate Detector project has a well-designed architecture with multi-engine OCR integration and consensus-based validation. The project is in a broken state that requires immediate fixes to become functional.
 
 **Current Status**
 
 Tkinter code and references have been removed. The project is now fully migrated to PyQt.
 
+**Browser input via Chrome extension is implemented and supports user field selection.**
+
+**Next:** 
+
 ---
 
 ## 🔧 Quick Reference & Troubleshooting
 
-### Essential Commands
-```bash
-# Test basic imports (use correct Python executable)
-venv310\Scripts\python.exe -c "import license_plate_app"
-
-# Test specific modules
-venv310\Scripts\python.exe -c "from models import OCRResult; print('Models OK')"
-venv310\Scripts\python.exe -c "from utils.validation import clean_license_plate; print('Utils OK')"
-
-# Check Python environment
-venv310\Scripts\python.exe -c "import sys; print('Python version:', sys.version)"
-```
-
 ### Common Issues & Quick Fixes
 
-**Syntax Errors:**
-- Look for incomplete class definitions
-- Verify all import statements match actual file locations
-
-**Import Errors:**
-- Verify engine files exist in expected locations
-- Check if engines should be in root or ocr/ directory
-- Ensure all required dependencies are installed with correct names
+**Indentation Errors:**
+- Look for inconsistent use of tabs and spaces
+- Ensure all code blocks are properly indented
